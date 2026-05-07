@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #f8fafc; /* Um cinza super claro e moderno (slate-50) */
+    color: #0f172a; /* Texto quase preto para contraste perfeito */
+    -webkit-font-smoothing: antialiased;
+  }
+}
