@@ -191,7 +191,8 @@ export default function Feed() {
           post_id: postId, 
           user_id: user.id, 
           user_email: user.email, 
-          texto: texto 
+          texto: texto,
+          user_role: user.role // <-- NECESSÁRIO PARA O SELO: Salva o cargo de quem comentou
         }])
         .select()
         .single();
@@ -227,30 +228,28 @@ export default function Feed() {
       if (updateError) throw updateError;
       console.log("2. Status atualizado no banco de dados.");
 
-      // Atualiza a tela
+      // Atualiza a tela instantaneamente
       setPosts(posts.map(p => p.id === postId ? { ...p, status: novoStatus } : p));
 
-      // 3. Busca quem deu UP
-      console.log("3. Buscando quem deu UP no post:", postId);
-      const { data: upvotes, error: upvotesError } = await supabase
-        .from('post_upvotes')
-        .select('user_id')
-        .eq('post_id', postId);
+      // 3. NOVO: Busca TODOS os usuários registrados no sistema
+      console.log("3. Buscando TODOS os usuários na tabela profiles...");
+      const { data: todosUsuarios, error: usuariosError } = await supabase
+        .from('profiles')
+        .select('id');
 
-      if (upvotesError) throw upvotesError;
-      console.log("4. Usuários encontrados que deram UP:", upvotes);
+      if (usuariosError) throw usuariosError;
+      console.log(`4. Total de usuários encontrados: ${todosUsuarios?.length}`);
 
-      // 4. Cria as notificações
-      if (upvotes && upvotes.length > 0) {
-        const novasNotificacoes = upvotes.map(voto => ({
-          user_id: voto.user_id,
-          post_id: postId,
-          mensagem: `O alerta que você apoiou foi atualizado para: ${novoStatus}!`
+      // 4. Cria as notificações para TODOS os usuários
+      if (todosUsuarios && todosUsuarios.length > 0) {
+        const novasNotificacoes = todosUsuarios.map(usuario => ({
+          user_id: usuario.id,
+          post_id: postId, // Para quando clicarem, saberem de qual post se trata
+          mensagem: `A Prefeitura atualizou um alerta da cidade para: ${novoStatus}!`
         }));
 
-        console.log("5. Tentando salvar as notificações:", novasNotificacoes);
+        console.log("5. Tentando disparar as notificações para todos...");
         
-        // Faltava verificar o erro da inserção na versão anterior!
         const { error: notifError } = await supabase
           .from('notificacoes')
           .insert(novasNotificacoes);
@@ -260,12 +259,10 @@ export default function Feed() {
           throw notifError;
         }
         
-        console.log("6. Sucesso! Notificações salvas no banco.");
-      } else {
-        console.log("Ninguém deu UP, então nenhuma notificação foi criada.");
+        console.log("6. Sucesso! Notificações salvas no banco para todos.");
       }
 
-      Swal.fire('Atualizado!', 'O status foi alterado.', 'success');
+      Swal.fire('Atualizado!', 'O status foi alterado e todos os cidadãos notificados.', 'success');
       
     } catch (error) {
       console.error("ERRO COMPLETO:", error);
@@ -302,6 +299,7 @@ export default function Feed() {
       Swal.fire('Erro', 'Erro ao excluir o alerta.', 'error');
     }
   };
+
 
   const postsFiltrados = filtroAtual === 'Todos' 
     ? posts 
@@ -367,7 +365,7 @@ export default function Feed() {
             const totalComentarios = post.comments ? post.comments.length : 0;
 
             return (
-              <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
+              <div key={post.id} id={`post-${post.id}`} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
                 
                 {/* Imagem (Se houver) */}
                 {post.foto_url && (
@@ -542,7 +540,15 @@ export default function Feed() {
                         ) : (
                           post.comments.map(c => (
                             <div key={c.id} className="bg-white p-3 rounded-lg border border-slate-200 text-sm shadow-sm flex flex-col">
-                              <span className="font-bold text-slate-800 mb-1">{c.user_email?.split('@')[0]}</span>
+                              {/* NOVO: Verificação de Selo de Conta Oficial */}
+                              <div className="flex items-center gap-1 mb-1">
+                                <span className="font-bold text-slate-800">{c.user_email?.split('@')[0]}</span>
+                                {(c.user_role === 'government' || c.user_role === 'admin' || c.user_email?.toLowerCase().includes('prefeitura')) && (
+                                  <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor" title="Conta Oficial Verificada">
+                                    <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307zm7.007 6.387a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
                               <span className="text-slate-600 leading-relaxed">{c.texto}</span>
                             </div>
                           ))

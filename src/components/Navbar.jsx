@@ -26,8 +26,9 @@ export default function Navbar() {
         .from('notificacoes')
         .select('*')
         .eq('user_id', user.id)
-        .eq('lida', false)
-        .order('created_at', { ascending: false }); // As mais novas primeiro
+        // REMOVIDO o .eq('lida', false) para trazer o histórico
+        .order('created_at', { ascending: false })
+        .limit(30); // Limite adicionado para não pesar o banco
       
       if (data) setNotificacoes(data);
     };
@@ -52,11 +53,32 @@ export default function Navbar() {
     return () => supabase.removeChannel(channel);
   }, [user]);
 
-  // Função para marcar como lida e tirar da lista
-  const marcarComoLida = async (id) => {
-    await supabase.from('notificacoes').update({ lida: true }).eq('id', id);
-    setNotificacoes(prev => prev.filter(n => n.id !== id));
+  // Função para marcar como lida, fechar e navegar até o post
+  const handleNotificacaoClick = async (notif) => {
+    if (!notif.lida) {
+      await supabase.from('notificacoes').update({ lida: true }).eq('id', notif.id);
+      // Apenas muda o status no estado, sem remover da lista
+      setNotificacoes(prev => prev.map(n => n.id === notif.id ? { ...n, lida: true } : n));
+    }
+
+    setMostrarNotificacoes(false); // Fecha o menu
+
+    // Navega e rola a tela até o post
+    navigate(`/#post-${notif.post_id}`);
+    
+    setTimeout(() => {
+      const elementoPost = document.getElementById(`post-${notif.post_id}`);
+      if (elementoPost) {
+        elementoPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Efeito rápido de borda piscando para destacar o post
+        elementoPost.classList.add('ring-4', 'ring-emerald-400', 'transition-all', 'duration-500');
+        setTimeout(() => elementoPost.classList.remove('ring-4', 'ring-emerald-400'), 2000);
+      }
+    }, 300);
   };
+
+  // Verifica se há alguma não lida para piscar a bolinha
+  const temNaoLida = notificacoes.some(n => !n.lida);
 
   return (
     <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
@@ -105,7 +127,7 @@ export default function Navbar() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
                   {/* Bolinha vermelha piscando se tiver mensagem */}
-                  {notificacoes.length > 0 && (
+                  {temNaoLida && (
                     <span className="absolute top-1 right-1 flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
@@ -113,24 +135,37 @@ export default function Navbar() {
                   )}
                 </button>
 
-                {/* Dropdown com a lista de mensagens */}
+                {/* Dropdown com a lista de mensagens (ESTILO INSTAGRAM) */}
                 {mostrarNotificacoes && (
-                  <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50">
-                    <div className="p-3 bg-slate-50 border-b border-slate-100 font-bold text-slate-700">
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden z-50">
+                    <div className="p-4 bg-white border-b border-slate-100 font-extrabold text-slate-800">
                       Notificações
                     </div>
-                    <div className="max-h-64 overflow-y-auto">
+                    <div className="max-h-[400px] overflow-y-auto">
                       {notificacoes.length === 0 ? (
-                        <p className="p-4 text-sm text-slate-500 text-center">Nenhuma novidade por aqui.</p>
+                        <div className="p-8 text-center">
+                          <p className="text-slate-500 font-medium">Nenhuma novidade por aqui.</p>
+                        </div>
                       ) : (
                         notificacoes.map(notif => (
                           <div 
                             key={notif.id} 
-                            onClick={() => marcarComoLida(notif.id)}
-                            className="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors"
+                            onClick={() => handleNotificacaoClick(notif)}
+                            className={`p-4 border-b border-slate-50 cursor-pointer transition-all flex gap-3 ${
+                              !notif.lida ? 'bg-blue-50/50 hover:bg-blue-50' : 'bg-white hover:bg-slate-50'
+                            }`}
                           >
-                            <p className="text-sm text-slate-700">{notif.mensagem}</p>
-                            <span className="text-xs text-emerald-600 font-semibold mt-1 block">Marcar como lida ✓</span>
+                            <div className="mt-1.5 shrink-0">
+                              {!notif.lida && <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm"></div>}
+                            </div>
+                            <div>
+                              <p className={`text-sm leading-snug ${!notif.lida ? 'text-slate-800 font-bold' : 'text-slate-600 font-medium'}`}>
+                                {notif.mensagem}
+                              </p>
+                              <span className="text-xs text-slate-400 mt-1 block font-medium">
+                                {new Date(notif.created_at).toLocaleDateString('pt-BR')} às {new Date(notif.created_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                              </span>
+                            </div>
                           </div>
                         ))
                       )}
