@@ -4,22 +4,23 @@ import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 
-// 1. Ouve os cliques no mapa para marcar manualmente
-function LocationMarker({ position, setPosition }) {
+// 1. Ouve os cliques no mapa, marca o pino e aciona a busca do endereço
+function LocationMarker({ position, setPosition, onMapClick }) {
   useMapEvents({
     click(e) {
       setPosition(e.latlng);
+      if (onMapClick) onMapClick(e.latlng.lat, e.latlng.lng);
     },
   });
   return position === null ? null : <Marker position={position} />;
 }
 
-// 2. Faz o mapa "voar" para a nova posição quando o usuário busca um endereço
+// 2. Faz o mapa "voar" para a nova posição quando digita ou clica
 function MapUpdater({ position }) {
   const map = useMap();
   useEffect(() => {
     if (position) {
-      map.flyTo([position.lat, position.lng], 16); // 16 é o nível de zoom
+      map.flyTo([position.lat, position.lng], 16);
     }
   }, [position, map]);
   return null;
@@ -44,14 +45,15 @@ export default function NovoAlerta() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // 3. Função que busca o endereço digitado e converte em coordenadas
+  // 3. BUSCA ESCRITA: Transforma o texto digitado em coordenadas no mapa
   const buscarLocalizacao = async () => {
     if (!form.rua || !form.bairro) {
-      alert('Por favor, preencha a Rua e o Bairro para buscar!');
+      alert('Por favor, preencha a Rua e o Bairro para buscar no mapa!');
       return;
     }
 
     try {
+      // Usando Muriaé, MG como base para a busca ser mais precisa
       const query = `${form.rua}, ${form.bairro}, Muriaé, MG, Brasil`;
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
       const data = await response.json();
@@ -68,11 +70,32 @@ export default function NovoAlerta() {
     }
   };
 
+  // 4. BUSCA PELO MAPA: Transforma o clique do mapa em texto
+  const buscarEnderecoPorCoordenadas = async (lat, lng) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16`);
+      const data = await response.json();
+
+      if (data && data.address) {
+        const ruaEncontrada = data.address.road || data.address.pedestrian || '';
+        const bairroEncontrado = data.address.suburb || data.address.neighbourhood || data.address.city_district || '';
+
+        setForm(prevForm => ({
+          ...prevForm,
+          rua: ruaEncontrada,
+          bairro: bairroEncontrado
+        }));
+      }
+    } catch (error) {
+      console.error("Erro ao traduzir as coordenadas:", error);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!position) {
-      alert('Por favor, clique no mapa ou busque um endereço para marcar a localização exata do problema!');
+      alert('Por favor, clique no mapa ou use o botão "Buscar" para marcar a localização exata do problema!');
       return;
     }
 
@@ -183,6 +206,7 @@ export default function NovoAlerta() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1.5">Nome da Rua</label>
+                  {/* Campos liberados para digitação novamente (onChange voltou e readOnly sumiu) */}
                   <input 
                     type="text" 
                     name="rua"
@@ -206,14 +230,15 @@ export default function NovoAlerta() {
                   />
                 </div>
               </div>
-              
+
+              {/* Botão de buscar devolvido à tela */}
               <button 
                 type="button" 
                 onClick={buscarLocalizacao}
                 className="w-full bg-blue-50 text-blue-700 border border-blue-100 font-bold py-3 rounded-xl hover:bg-blue-100 transition-colors mb-4 flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                Buscar e Marcar no Mapa
+                Buscar endereço no Mapa
               </button>
 
               <div className="bg-slate-100 h-64 w-full rounded-xl border border-slate-200 overflow-hidden relative mb-2 z-0">
@@ -226,7 +251,7 @@ export default function NovoAlerta() {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution='&copy; OpenStreetMap'
                   />
-                  <LocationMarker position={position} setPosition={setPosition} />
+                  <LocationMarker position={position} setPosition={setPosition} onMapClick={buscarEnderecoPorCoordenadas} />
                   <MapUpdater position={position} />
                 </MapContainer>
               </div>
@@ -234,7 +259,7 @@ export default function NovoAlerta() {
               {!position ? (
                 <p className="text-xs text-amber-600 font-bold flex items-center gap-1 mt-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 17c-.77 1.333.192 3 1.732 3z" /></svg>
-                  Clique no botão "Buscar" ou marque o ponto manualmente no mapa acima.
+                  Digite o endereço e clique em "Buscar" OU marque diretamente clicando no mapa.
                 </p>
               ) : (
                 <p className="text-xs text-emerald-600 font-bold flex items-center gap-1 mt-2">

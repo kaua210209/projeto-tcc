@@ -7,6 +7,7 @@ import NovoAlerta from './pages/NovoAlerta';
 import Perfil from './pages/Perfil';
 import Dashboard from './pages/Dashboard';
 import Cadastro from './pages/Cadastro';
+import MapaAlertas from './pages/MapaAlertas'
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
           <Route path="/novo" element={<NovoAlerta />} />
           <Route path="/perfil" element={<Perfil />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/mapa" element={<MapaAlertas />} />
         </Routes>
       </main>
     </div>

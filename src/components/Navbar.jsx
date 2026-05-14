@@ -29,7 +29,7 @@ export default function Navbar() {
         // REMOVIDO o .eq('lida', false) para trazer o histórico
         .order('created_at', { ascending: false })
         .limit(30); // Limite adicionado para não pesar o banco
-      
+
       if (data) setNotificacoes(data);
     };
 
@@ -38,16 +38,16 @@ export default function Navbar() {
     // Fica escutando se a prefeitura atualizou algum post agora
     const channel = supabase
       .channel('notificacoes_realtime')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'notificacoes', 
-        filter: `user_id=eq.${user.id}` 
-      }, 
-      payload => {
-        setNotificacoes(prev => [payload.new, ...prev]);
-        toastSucesso('Sua denúncia teve uma atualização!'); // O Toast brilha na tela!
-      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notificacoes',
+        filter: `user_id=eq.${user.id}`
+      },
+        payload => {
+          setNotificacoes(prev => [payload.new, ...prev]);
+          toastSucesso('Sua denúncia teve uma atualização!'); // O Toast brilha na tela!
+        })
       .subscribe();
 
     return () => supabase.removeChannel(channel);
@@ -65,7 +65,7 @@ export default function Navbar() {
 
     // Navega e rola a tela até o post
     navigate(`/#post-${notif.post_id}`);
-    
+
     setTimeout(() => {
       const elementoPost = document.getElementById(`post-${notif.post_id}`);
       if (elementoPost) {
@@ -83,7 +83,7 @@ export default function Navbar() {
   return (
     <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        
+
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <div className="bg-emerald-600 p-1.5 rounded-lg">
@@ -98,7 +98,7 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-6">
           <Link to="/" className="text-slate-600 hover:text-emerald-600 font-semibold transition">Feed</Link>
           <Link to="/novo" className="text-slate-600 hover:text-emerald-600 font-semibold transition">Novo Alerta</Link>
-          
+
           {/* Se for Admin ou Prefeitura, mostra o Dashboard */}
           {(user?.role === 'admin' || user?.role === 'government') && (
             <Link to="/dashboard" className="text-slate-600 hover:text-emerald-600 font-semibold transition">📊 Estatísticas</Link>
@@ -108,18 +108,26 @@ export default function Navbar() {
           {user?.role === 'admin' && (
             <Link to="/admin" className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold">Painel Admin</Link>
           )}
+
+          <Link
+          to="/mapa"
+          className="flex items-center gap-2 text-slate-600 hover:text-emerald-600 font-bold transition-colors"
+        >
+          Mapa de Alertas
+        </Link>
+
         </div>
 
         {/* Botões de Ação / Perfil */}
         <div className="flex items-center gap-4">
           {user ? (
             <div className="flex items-center gap-3 relative">
-              
+
               {/* ========================================== */}
               {/* O SININHO DE NOTIFICAÇÕES ENTRA AQUI!      */}
               {/* ========================================== */}
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setMostrarNotificacoes(!mostrarNotificacoes)}
                   className="p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-all relative"
                 >
@@ -148,12 +156,11 @@ export default function Navbar() {
                         </div>
                       ) : (
                         notificacoes.map(notif => (
-                          <div 
-                            key={notif.id} 
+                          <div
+                            key={notif.id}
                             onClick={() => handleNotificacaoClick(notif)}
-                            className={`p-4 border-b border-slate-50 cursor-pointer transition-all flex gap-3 ${
-                              !notif.lida ? 'bg-blue-50/50 hover:bg-blue-50' : 'bg-white hover:bg-slate-50'
-                            }`}
+                            className={`p-4 border-b border-slate-50 cursor-pointer transition-all flex gap-3 ${!notif.lida ? 'bg-blue-50/50 hover:bg-blue-50' : 'bg-white hover:bg-slate-50'
+                              }`}
                           >
                             <div className="mt-1.5 shrink-0">
                               {!notif.lida && <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm"></div>}
@@ -163,7 +170,7 @@ export default function Navbar() {
                                 {notif.mensagem}
                               </p>
                               <span className="text-xs text-slate-400 mt-1 block font-medium">
-                                {new Date(notif.created_at).toLocaleDateString('pt-BR')} às {new Date(notif.created_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                                {new Date(notif.created_at).toLocaleDateString('pt-BR')} às {new Date(notif.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
                           </div>
@@ -185,14 +192,14 @@ export default function Navbar() {
               </Link>
               {/* Botão de Logout */}
               <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition" title="Sair">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             </div>
           ) : (
             <Link to="/login" className="btn-primary">Entrar</Link>
           )}
         </div>
-        
+
       </div>
     </nav>
   );
