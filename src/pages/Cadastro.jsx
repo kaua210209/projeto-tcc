@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { alertaSucesso } from '../utils/alertas';
+import { alertaSucesso, alertaErro } from '../utils/alertas';
 
 export default function Cadastro() {
   const [nome, setNome] = useState('');

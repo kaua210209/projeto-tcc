@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import { useAuth } from '../contexts/AuthContext';
 import Swal from 'sweetalert2';
+import { Link } from 'react-router-dom';
 
 export default function Feed() {
   const { user } = useAuth();
@@ -10,9 +11,16 @@ export default function Feed() {
   const [loading, setLoading] = useState(true);
   const [votedPosts, setVotedPosts] = useState(new Set());
 
+  // === ESTADOS PARA A RESOLUÇÃO DA PREFEITURA ===
+  const [modalResolucaoAberto, setModalResolucaoAberto] = useState(false);
+  const [postParaResolver, setPostParaResolver] = useState(null);
+  const [descResolucao, setDescResolucao] = useState('');
+  const [fotoResolucao, setFotoResolucao] = useState(null);
+  const [enviandoResolucao, setEnviandoResolucao] = useState(false);
+
   // Estados para Denúncia e Deslike
-  const [downvotedPosts, setDownvotedPosts] = useState(new Set()); 
-  const [reportedPosts, setReportedPosts] = useState(new Set());   
+  const [downvotedPosts, setDownvotedPosts] = useState(new Set());
+  const [reportedPosts, setReportedPosts] = useState(new Set());
 
   const [showComments, setShowComments] = useState({});
   const [newComments, setNewComments] = useState({});
@@ -23,11 +31,11 @@ export default function Feed() {
   const fetchPostsAndVotes = async () => {
     try {
       setLoading(true);
-      
+
       // NOVO: Adicionado post_downvotes(count) e denuncias(count) na busca
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
-        .select('*, comments(*), post_upvotes(count), post_downvotes(count), denuncias(count)')
+        .select('*, profiles(nome, email, role), comments(*), post_upvotes(count), post_downvotes(count), denuncias(count)')
         .order('created_at', { ascending: false });
 
       if (postsError) throw postsError;
@@ -55,7 +63,7 @@ export default function Feed() {
 
   useEffect(() => {
     fetchPostsAndVotes();
-  }, [user]);
+  }, []);
 
   const handleApoiar = async (postId, currentUpvotes) => {
     if (!user) return Swal.fire('Aviso', 'Faça login para apoiar!', 'warning');
@@ -110,7 +118,7 @@ export default function Feed() {
         if (error) throw error;
 
         setReportedPosts(prev => new Set(prev).add(postId));
-        
+
         // NOVO: Atualiza a contagem na tela na mesma hora
         setPosts(posts.map(p => {
           if (p.id === postId) {
@@ -180,26 +188,32 @@ export default function Feed() {
 
   const submitComment = async (postId) => {
     if (!user) return Swal.fire('Aviso', 'Faça login para comentar!', 'warning');
-    
+
     const texto = newComments[postId];
     if (!texto || texto.trim() === '') return;
 
     try {
+      // Determina o role do usuário dinamicamente com base no contexto de autenticação
+      const userRole = user.role ||
+        (user.email?.toLowerCase().includes('admin') ? 'admin' :
+          user.email?.toLowerCase().includes('prefeitura') ? 'government' : 'citizen');
+
+      // Correção: Adicionado .select('*, profiles(nome, email, role)') para trazer o perfil estruturado na resposta
       const { data, error } = await supabase
         .from('comments')
-        .insert([{ 
-          post_id: postId, 
-          user_id: user.id, 
-          user_email: user.email, 
+        .insert([{
+          post_id: postId,
+          user_id: user.id,
+          user_email: user.email,
           texto: texto,
-          user_role: user.role // <-- NECESSÁRIO PARA O SELO: Salva o cargo de quem comentou
+          user_role: userRole
         }])
-        .select()
+        .select('*, profiles(nome, email, role)')
         .single();
 
       if (error) throw error;
 
-      setPosts(posts.map(p => {
+      setPosts(prevPosts => prevPosts.map(p => {
         if (p.id === postId) {
           const comentariosAtuais = p.comments || [];
           return { ...p, comments: [...comentariosAtuais, data] };
@@ -249,7 +263,7 @@ export default function Feed() {
         }));
 
         console.log("5. Tentando disparar as notificações para todos...");
-        
+
         const { error: notifError } = await supabase
           .from('notificacoes')
           .insert(novasNotificacoes);
@@ -258,12 +272,12 @@ export default function Feed() {
           console.error("ERRO GRAVE AO INSERIR NOTIFICAÇÃO:", notifError);
           throw notifError;
         }
-        
+
         console.log("6. Sucesso! Notificações salvas no banco para todos.");
       }
 
       Swal.fire('Atualizado!', 'O status foi alterado e todos os cidadãos notificados.', 'success');
-      
+
     } catch (error) {
       console.error("ERRO COMPLETO:", error);
       Swal.fire('Erro no Processo', `Veja o console: ${error.message}`, 'error');
@@ -283,7 +297,7 @@ export default function Feed() {
     });
 
     if (!result.isConfirmed) return;
-    
+
     try {
       const { error } = await supabase
         .from('posts')
@@ -301,8 +315,8 @@ export default function Feed() {
   };
 
 
-  const postsFiltrados = filtroAtual === 'Todos' 
-    ? posts 
+  const postsFiltrados = filtroAtual === 'Todos'
+    ? posts
     : posts.filter(post => post.categoria === filtroAtual);
 
   if (loading) {
@@ -314,10 +328,63 @@ export default function Feed() {
     );
   }
 
+  // === FUNÇÃO PARA SALVAR A RESOLUÇÃO ===
+  const confirmarResolucao = async () => {
+    if (!descResolucao.trim() || !fotoResolucao) {
+      Swal.fire('Atenção', 'É obrigatório anexar uma foto e descrever o que foi feito!', 'warning');
+      return;
+    }
+
+    setEnviandoResolucao(true);
+    try {
+      // 1. Fazer upload da foto para o Storage
+      const fileExt = fotoResolucao.name.split('.').pop();
+      const fileName = `resolvido_${Date.now()}.${fileExt}`;
+      const filePath = `${postParaResolver}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('resolucoes')
+        .upload(filePath, fotoResolucao);
+
+      if (uploadError) throw uploadError;
+
+      // 2. Pegar a URL pública da foto
+      const { data: publicUrlData } = supabase.storage
+        .from('resolucoes')
+        .getPublicUrl(filePath);
+
+      // 3. Atualizar o post no banco de dados
+      const { error: updateError } = await supabase
+        .from('posts')
+        .update({
+          status: 'Resolvido',
+          descricao_resolucao: descResolucao,
+          foto_resolucao: publicUrlData.publicUrl
+        })
+        .eq('id', postParaResolver);
+
+      if (updateError) throw updateError;
+
+      Swal.fire('Sucesso!', 'Problema marcado como resolvido com prestação de contas!', 'success');
+
+      // Limpar e fechar modal
+      setModalResolucaoAberto(false);
+      setDescResolucao('');
+      setFotoResolucao(null);
+      fetchPostsAndVotes(); // Recarrega o feed
+
+    } catch (error) {
+      console.error(error);
+      Swal.fire('Erro', 'Não foi possível salvar a resolução.', 'error');
+    } finally {
+      setEnviandoResolucao(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4">
+    <div className="min-h-screen bg-slate-50 py-4 px-2 sm:py-8 sm:px-4 pb-24 sm:pb-8">
       <div className="max-w-3xl mx-auto">
-        
+
         {/* Cabeçalho e Título */}
         <div className="mb-8">
           <h2 className="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">
@@ -327,17 +394,16 @@ export default function Feed() {
         </div>
 
         {/* Filtros (Categorias) */}
-        <div className="mb-8 overflow-x-auto pb-2 scrollbar-hide">
-          <div className="flex gap-2 min-w-max">
+        <div className="mb-6 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-2 px-1">
             {categorias.map(categoria => (
               <button
                 key={categoria}
                 onClick={() => setFiltroAtual(categoria)}
-                className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
-                  filtroAtual === categoria
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-emerald-700'
-                }`}
+                className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${filtroAtual === categoria
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-emerald-700'
+                  }`}
               >
                 {categoria}
               </button>
@@ -366,7 +432,7 @@ export default function Feed() {
 
             return (
               <div key={post.id} id={`post-${post.id}`} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
-                
+
                 {/* Imagem (Se houver) */}
                 {post.foto_url && (
                   <div className="w-full h-64 sm:h-80 bg-slate-100 border-b border-slate-100">
@@ -375,17 +441,49 @@ export default function Feed() {
                 )}
 
                 <div className="p-5 sm:p-6">
+
+                  {/* <===== ADICIONADO AQUI: Link com o nome do Autor do Alerta =====> */}
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs font-black uppercase shadow-sm">
+                      {post.profiles?.nome ? post.profiles.nome.charAt(0) : 'U'}
+                    </div>
+
+                    <Link
+                      to={post?.autor_id ? `/perfil/${post.autor_id}` : '#'}
+                      className="text-sm font-bold text-slate-700 hover:text-emerald-600 hover:underline transition-colors flex items-center gap-1.5"
+                    >
+                      {/* Tratamento e fallback para Admin/Prefeitura */}
+                      {post.profiles?.nome ||
+                        (post.profiles?.email?.toLowerCase().includes('admin') ? 'Administrador' :
+                          post.profiles?.email?.toLowerCase().includes('prefeitura') ? 'Prefeitura Oficial' : 'Usuário da Cidade')}
+
+                      {/* Selo Visual para o Administrador */}
+                      {(post.profiles?.role === 'admin' || post.profiles?.email === 'admin@gmail.com') && (
+                        <span className="text-[10px] bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded-md font-extrabold tracking-wide uppercase scale-90">
+                          Admin
+                        </span>
+                      )}
+
+                      {/* Selo Visual para a Prefeitura */}
+                      {(post.profiles?.role === 'prefeitura' || post.profiles?.role === 'government' || post.profiles?.email?.includes('prefeitura')) && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-md font-extrabold tracking-wide uppercase flex items-center gap-0.5 scale-90">
+                          Oficial ✔
+                        </span>
+                      )}
+                    </Link>
+                  </div>
+                  {/* <===============================================================> */}
+
                   {/* Cabeçalho do Card */}
                   <div className="flex flex-wrap justify-between items-start gap-3 mb-3">
                     <div className="flex flex-wrap gap-2">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${
-                        post.status === 'Resolvido' ? 'bg-emerald-100 text-emerald-700' : 
-                        post.status === 'Em Andamento' ? 'bg-blue-100 text-blue-700' : 
-                        'bg-amber-100 text-amber-700'
-                      }`}>
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${post.status === 'Resolvido' ? 'bg-emerald-100 text-emerald-700' :
+                        post.status === 'Em Andamento' ? 'bg-blue-100 text-blue-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
                         {post.status || 'Reportado'}
                       </span>
-                      
+
                       <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md uppercase tracking-wider">
                         {post.categoria}
                       </span>
@@ -431,10 +529,34 @@ export default function Feed() {
                     </div>
                   )}
 
+                  {post.status === 'Resolvido' && post.descricao_resolucao && (
+                    <div className="mt-4 mb-5 p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-emerald-600 text-lg">✅</span>
+                        <h4 className="font-extrabold text-emerald-800">Serviço Concluído pela Prefeitura</h4>
+                      </div>
+                      <p className="text-sm text-emerald-700 mb-3 whitespace-pre-wrap">
+                        {post.descricao_resolucao}
+                      </p>
+                      {post.foto_resolucao && (
+                        <div className="relative rounded-lg overflow-hidden border border-emerald-200 max-w-md mx-auto sm:mx-0">
+                          <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-1 rounded backdrop-blur-sm">
+                            DEPOIS (Resolvido)
+                          </span>
+                          <img
+                            src={post.foto_resolucao}
+                            alt="Foto da resolução"
+                            className="w-full h-48 object-cover"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Ações (Comentar, Denunciar, Deslike e Upar) */}
                   <div className="flex flex-col lg:flex-row justify-between items-center gap-4 pt-4 border-t border-slate-100">
-                    <button 
-                      onClick={() => toggleComments(post.id)} 
+                    <button
+                      onClick={() => toggleComments(post.id)}
                       className="flex items-center justify-center gap-2 w-full lg:w-auto text-slate-600 font-bold hover:text-emerald-600 hover:bg-emerald-50 px-4 py-2.5 rounded-xl transition-colors"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
@@ -442,14 +564,13 @@ export default function Feed() {
                     </button>
 
                     <div className="flex flex-wrap sm:flex-nowrap items-center justify-center lg:justify-end gap-2 w-full lg:w-auto">
-                      
+
                       {/* BOTÃO DENÚNCIA */}
-                      <button 
+                      <button
                         onClick={() => handleDenuncia(post.id)}
                         disabled={jaDenunciou}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                          jaDenunciou ? 'bg-red-50 text-red-300 cursor-not-allowed' : 'bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700'
-                        }`}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-bold rounded-xl transition-all ${jaDenunciou ? 'bg-red-50 text-red-300 cursor-not-allowed' : 'bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700'
+                          }`}
                         title="Sinalizar Fake News ou conteúdo político"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" /></svg>
@@ -457,12 +578,11 @@ export default function Feed() {
                       </button>
 
                       {/* BOTÃO DESLIKE / IRRELEVANTE */}
-                      <button 
+                      <button
                         onClick={() => handleDeslike(post.id)}
                         disabled={jaDeuDeslike}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                          jaDeuDeslike ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-700'
-                        }`}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-bold rounded-xl transition-all ${jaDeuDeslike ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-700'
+                          }`}
                         title="Sinalizar como irrelevante"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v5a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" /></svg>
@@ -470,14 +590,13 @@ export default function Feed() {
                       </button>
 
                       {/* BOTÃO UPAR ORIGINAL */}
-                      <button 
+                      <button
                         onClick={() => handleApoiar(post.id, post.upvotes)}
                         disabled={jaVotou}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 font-bold rounded-xl transition-all ${
-                          jaVotou 
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                            : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md hover:shadow-lg'
-                        }`}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 font-bold rounded-xl transition-all ${jaVotou
+                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md hover:shadow-lg'
+                          }`}
                       >
                         {jaVotou ? (
                           <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> UPADO</>
@@ -499,22 +618,29 @@ export default function Feed() {
                         Acesso Restrito (Prefeitura / Admin)
                       </div>
                       <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
-                        <button 
+                        <button
                           onClick={() => atualizarStatus(post.id, 'Em Andamento')}
                           className="flex-1 sm:flex-none bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition"
                         >
                           Em Andamento
                         </button>
-                        <button 
-                          onClick={() => atualizarStatus(post.id, 'Resolvido')}
-                          className="flex-1 sm:flex-none bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-600 transition"
-                        >
-                          Resolvido
-                        </button>
+
+                        {/* === [PARTE C.1] MODIFICADO: Só aparece se não estiver resolvido e agora ABRE O MODAL === */}
+                        {post.status !== 'Resolvido' && (
+                          <button
+                            onClick={() => {
+                              setPostParaResolver(post.id);
+                              setModalResolucaoAberto(true);
+                            }}
+                            className="flex-1 sm:flex-none bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-600 transition"
+                          >
+                            Resolvido
+                          </button>
+                        )}
 
                         {/* BOTÃO EXCLUIR: Aparece APENAS para o Admin */}
                         {user?.role === 'admin' && (
-                          <button 
+                          <button
                             onClick={() => excluirPost(post.id)}
                             className="flex-1 sm:flex-none bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition flex items-center justify-center gap-1"
                           >
@@ -533,22 +659,50 @@ export default function Feed() {
                         <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
                         Discussão
                       </h4>
-                      
+
                       <div className="space-y-3 mb-4 max-h-56 overflow-y-auto pr-2 custom-scrollbar">
                         {totalComentarios === 0 ? (
                           <p className="text-sm text-slate-500 italic text-center py-4 bg-white rounded-lg border border-slate-100">Seja o primeiro a comentar sobre este problema!</p>
                         ) : (
-                          post.comments.map(c => (
+                          post.comments.map((c) => (
                             <div key={c.id} className="bg-white p-3 rounded-lg border border-slate-200 text-sm shadow-sm flex flex-col">
-                              {/* NOVO: Verificação de Selo de Conta Oficial */}
-                              <div className="flex items-center gap-1 mb-1">
-                                <span className="font-bold text-slate-800">{c.user_email?.split('@')[0]}</span>
-                                {(c.user_role === 'government' || c.user_role === 'admin' || c.user_email?.toLowerCase().includes('prefeitura')) && (
-                                  <svg className="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor" title="Conta Oficial Verificada">
-                                    <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307zm7.007 6.387a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
-                                  </svg>
-                                )}
+                              <div className="flex justify-between items-center mb-1">
+
+                                {/* Nome do Autor do Comentário + Selos Oficiais */}
+                                <div className="flex items-center gap-1.5">
+                                  <Link
+                                    to={`/perfil/${c.user_id}`}
+                                    className="font-bold text-slate-800 hover:text-emerald-600 hover:underline"
+                                  >
+                                    {c.profiles?.nome ||
+                                      (c.user_role === 'admin' || c.user_email?.toLowerCase().includes('admin') ? 'Administrador' :
+                                        c.user_role === 'government' || c.user_role === 'prefeitura' || c.user_email?.toLowerCase().includes('prefeitura') ? 'Prefeitura Oficial' :
+                                          c.user_email?.split('@')[0] || 'Cidadão')}
+                                  </Link>
+
+                                  {/* Selo para Administrador no Comentário */}
+                                  {(c.profiles?.role === 'admin' || c.user_role === 'admin' || c.profiles?.email?.toLowerCase().includes('admin') || c.user_email?.toLowerCase().includes('admin')) && (
+                                    <span className="text-[9px] bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-extrabold tracking-wide uppercase">
+                                      Admin
+                                    </span>
+                                  )}
+
+                                  {/* Selo para a Prefeitura no Comentário */}
+                                  {(c.profiles?.role === 'prefeitura' || c.user_role === 'prefeitura' || c.profiles?.role === 'government' || c.user_role === 'government' || c.profiles?.email?.toLowerCase().includes('prefeitura') || c.user_email?.toLowerCase().includes('prefeitura')) && (
+                                    <span className="text-[9px] bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-extrabold tracking-wide uppercase flex items-center gap-0.5">
+                                      Oficial
+                                      <svg className="w-2.5 h-2.5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                                        <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307zm7.007 6.387a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
+                                      </svg>
+                                    </span>
+                                  )}
+                                </div>
+
+                                <span className="text-[11px] text-slate-400">
+                                  {c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : ''}
+                                </span>
                               </div>
+
                               <span className="text-slate-600 leading-relaxed">{c.texto}</span>
                             </div>
                           ))
@@ -556,15 +710,15 @@ export default function Feed() {
                       </div>
 
                       <div className="flex flex-col sm:flex-row gap-2">
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           placeholder="Escreva um comentário..."
                           value={newComments[post.id] || ''}
                           onChange={(e) => handleCommentChange(post.id, e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && submitComment(post.id)}
                           className="flex-1 px-4 py-2.5 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
                         />
-                        <button 
+                        <button
                           onClick={() => submitComment(post.id)}
                           className="bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-900 transition flex items-center justify-center gap-2"
                         >
@@ -580,6 +734,61 @@ export default function Feed() {
           })}
         </div>
       </div>
+      {modalResolucaoAberto && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50">
+              <h2 className="text-lg font-black text-emerald-800">Prestar Contas da Resolução</h2>
+              <button 
+                onClick={() => setModalResolucaoAberto(false)}
+                className="text-emerald-600 hover:text-emerald-800 font-bold p-1"
+              >✕</button>
+            </div>
+            
+            <div className="p-5 flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">
+                  O que foi feito no local? <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={descResolucao}
+                  onChange={(e) => setDescResolucao(e.target.value)}
+                  placeholder="Descreva o serviço executado, materiais usados, etc..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none h-24 text-sm"
+                ></textarea>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">
+                  Foto do Serviço Concluído <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setFotoResolucao(e.target.files[0])}
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+              <button
+                onClick={() => setModalResolucaoAberto(false)}
+                className="px-4 py-2 text-slate-600 font-bold text-sm hover:bg-slate-200 rounded-xl transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarResolucao}
+                disabled={enviandoResolucao}
+                className="px-6 py-2 bg-emerald-600 text-white font-bold text-sm rounded-xl hover:bg-emerald-700 transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {enviandoResolucao ? 'Salvando...' : 'Salvar Resolução'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -32,13 +32,13 @@ export default function NovoAlerta() {
   const [loading, setLoading] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [position, setPosition] = useState(null);
-  
+
   const [form, setForm] = useState({
     titulo: '',
     descricao: '',
     categoria: 'Infraestrutura',
     bairro: '',
-    rua: '' 
+    rua: ''
   });
 
   const handleChange = (e) => {
@@ -93,7 +93,7 @@ export default function NovoAlerta() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!position) {
       alert('Por favor, clique no mapa ou use o botão "Buscar" para marcar a localização exata do problema!');
       return;
@@ -123,11 +123,13 @@ export default function NovoAlerta() {
 
       const { error } = await supabase.from('posts').insert([
         {
-          autor_id: user.id, 
+          autor_id: user.id,
+          autor_nome: user?.user_metadata?.nome || user?.email?.split('@')[0] || 'Cidadão',
+          autor_email: user?.email,
           titulo: form.titulo,
           descricao: form.descricao,
           categoria: form.categoria,
-          bairro: enderecoCompleto, 
+          bairro: enderecoCompleto,
           foto_url: fotoUrl,
           latitude: position.lat,
           longitude: position.lng
@@ -135,7 +137,7 @@ export default function NovoAlerta() {
       ]);
 
       if (error) throw error;
-      navigate('/'); 
+      navigate('/');
     } catch (error) {
       alert('Erro: ' + error.message);
     } finally {
@@ -146,7 +148,7 @@ export default function NovoAlerta() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-3xl mx-auto">
-        
+
         {/* Cabeçalho da Página */}
         <div className="mb-8 text-center md:text-left flex flex-col md:flex-row items-center gap-4">
           <div className="bg-emerald-100 w-14 h-14 rounded-full flex items-center justify-center shadow-sm border border-emerald-50">
@@ -163,20 +165,20 @@ export default function NovoAlerta() {
         {/* Card Principal do Formulário */}
         <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
           <form onSubmit={handleSubmit} className="space-y-8">
-            
+
             {/* Seção 1: Foto */}
             <section>
               <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">1. Evidência</h3>
               <label className="cursor-pointer block">
                 <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors group ${imageFile ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:bg-slate-50 hover:border-emerald-400'}`}>
-                  
-                  <input 
-                    type="file" 
-                    accept="image/*" 
+
+                  <input
+                    type="file"
+                    accept="image/*"
                     onChange={(e) => setImageFile(e.target.files[0])}
-                    className="hidden" 
+                    className="hidden"
                   />
-                  
+
                   {imageFile ? (
                     <>
                       <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -188,7 +190,7 @@ export default function NovoAlerta() {
                     </>
                   ) : (
                     <>
-                      <svg className="w-10 h-10 mx-auto text-slate-400 group-hover:text-emerald-500 mb-3 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                      <svg className="w-10 h-10 mx-auto text-slate-400 group-hover:text-emerald-500 mb-3 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       <p className="text-sm font-semibold text-slate-600">Selecione uma foto do local</p>
                       <div className="mt-4 bg-emerald-50 text-emerald-700 font-bold py-2 px-4 rounded-lg inline-block group-hover:bg-emerald-100 transition-colors text-sm">
                         Escolher Foto
@@ -202,49 +204,49 @@ export default function NovoAlerta() {
             {/* Seção 2: Localização */}
             <section>
               <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">2. Localização</h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1.5">Nome da Rua</label>
                   {/* Campos liberados para digitação novamente (onChange voltou e readOnly sumiu) */}
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     name="rua"
                     value={form.rua}
                     onChange={handleChange}
                     required
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all" 
-                    placeholder="Ex: Rua Direita" 
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all"
+                    placeholder="Ex: Rua Direita"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1.5">Bairro</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     name="bairro"
                     value={form.bairro}
                     onChange={handleChange}
                     required
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all" 
-                    placeholder="Ex: Centro" 
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all"
+                    placeholder="Ex: Centro"
                   />
                 </div>
               </div>
 
               {/* Botão de buscar devolvido à tela */}
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={buscarLocalizacao}
                 className="w-full bg-blue-50 text-blue-700 border border-blue-100 font-bold py-3 rounded-xl hover:bg-blue-100 transition-colors mb-4 flex items-center justify-center gap-2"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 Buscar endereço no Mapa
               </button>
 
               <div className="bg-slate-100 h-64 w-full rounded-xl border border-slate-200 overflow-hidden relative mb-2 z-0">
-                <MapContainer 
-                  center={[-21.134, -42.365]} 
-                  zoom={14} 
+                <MapContainer
+                  center={[-21.134, -42.365]}
+                  zoom={14}
                   style={{ height: '100%', width: '100%' }}
                 >
                   <TileLayer
@@ -255,7 +257,7 @@ export default function NovoAlerta() {
                   <MapUpdater position={position} />
                 </MapContainer>
               </div>
-              
+
               {!position ? (
                 <p className="text-xs text-amber-600 font-bold flex items-center gap-1 mt-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 17c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -272,23 +274,23 @@ export default function NovoAlerta() {
             {/* Seção 3: Detalhes */}
             <section>
               <h3 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">3. Detalhes do Problema</h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1.5">Título do Problema</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     name="titulo"
                     value={form.titulo}
                     onChange={handleChange}
                     required
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all" 
-                    placeholder="Ex: Buraco na via..." 
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all"
+                    placeholder="Ex: Buraco na via..."
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1.5">Categoria</label>
-                  <select 
+                  <select
                     name="categoria"
                     value={form.categoria}
                     onChange={handleChange}
@@ -306,13 +308,13 @@ export default function NovoAlerta() {
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1.5">Descrição detalhada</label>
-                <textarea 
+                <textarea
                   name="descricao"
                   value={form.descricao}
                   onChange={handleChange}
                   required
-                  rows="4" 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all resize-none" 
+                  rows="4"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 focus:bg-white text-slate-800 transition-all resize-none"
                   placeholder="Conte-nos mais sobre o problema..."
                 ></textarea>
               </div>
@@ -320,8 +322,8 @@ export default function NovoAlerta() {
 
             {/* Botão Submit */}
             <div className="pt-6 border-t border-slate-100">
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={loading}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-4 rounded-xl shadow-md hover:shadow-lg transition-all text-lg disabled:bg-slate-400 disabled:shadow-none"
               >

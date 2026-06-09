@@ -23,6 +23,7 @@ function App() {
           <Route path="/cadastro" element={<Cadastro />} />
           <Route path="/novo" element={<NovoAlerta />} />
           <Route path="/perfil" element={<Perfil />} />
+          <Route path="/perfil/:id" element={<Perfil />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/mapa" element={<MapaAlertas />} />
         </Routes>

@@ -28,7 +28,7 @@ export default function MapaAlertas() {
   const posicaoCentral = [-21.1306, -42.3658];
 
   return (
-    <div className="h-[calc(100-64px)] w-full">
+    <div className="h-[calc(100vh-64px)] w-full">
       <MapContainer 
         center={posicaoCentral} 
         zoom={14} 

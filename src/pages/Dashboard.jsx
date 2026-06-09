@@ -110,7 +110,7 @@ export default function Dashboard() {
                   outerRadius={80}
                   paddingAngle={5}
                   dataKey="value"
-                  label={({name, percent}) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                  label={({percent}) => `(${(percent * 100).toFixed(0)}%)`}
                   labelLine={false}
                 >
                   {dadosCategorias.map((entry, index) => (
