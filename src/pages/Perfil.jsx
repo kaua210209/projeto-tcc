@@ -122,12 +122,17 @@ export default function Perfil() {
           emailDefinido = 'E-mail privado';
         }
 
-        // 3. BUSCA OS POSTS DO UTILIZADOR
-        const { data: postsData, error: postsError } = await supabase
-          .from('posts')
-          .select('*')
-          .eq('autor_id', idParaBuscar)
-          .order('created_at', { ascending: false });
+        // 3. BUSCA OS POSTS DO UTILIZADOR (OU RESOLUÇÕES SE FOR PREFEITURA)
+        let query = supabase.from('posts').select('*');
+
+        if (prefeituraCheck) {
+          // Se for o perfil da prefeitura, traz os posts que foram marcados como Resolvido
+          query = query.eq('status', 'Resolvido');
+        } else {
+          // Se for um cidadão comum, traz os alertas criados por ele
+          query = query.eq('autor_id', idParaBuscar);
+        }
+        const { data: postsData, error: postsError } = await query.order('created_at', { ascending: false });
 
         if (!postsError && postsData) {
           setMeusPosts(postsData);
