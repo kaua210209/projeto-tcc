@@ -265,7 +265,7 @@ export default function Perfil() {
   const primeiraLetra = dadosDoPerfil.nome ? dadosDoPerfil.nome.charAt(0).toUpperCase() : 'U';
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4">
+    <div className="min-h-screen bg-slate-50 pt-8 px-4 pb-24 sm:pb-8">
       <div className="max-w-4xl mx-auto">
 
         {/* Card do Usuário */}
